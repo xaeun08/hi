@@ -254,10 +254,44 @@ async function generateCodeChallenge(verifier) {
         .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
+// --- J-Pop Filter Utils ---
+const JPOP_ARTISTS = [
+    "YOASOBI", "Ado", "Kenshi Yonezu", "Official Hige Dandism", "Mrs. GREEN APPLE", 
+    "Vaundy", "King Gnu", "Creepy Nuts", "imase", "Yuuri", "Aimyon", "Eve", 
+    "LiSA", "Radwimps", "Hikaru Utada", "ZUTOMAYO", "Yorushika", "Spitz", 
+    "Fujii Kaze", "Aimer", "Back Number", "Suda Masaki", "Tani Yuuki", "Saucy Dog"
+];
+
+function containsJapanese(text) {
+    // Regex for Hiragana, Katakana, and common Kanji
+    return /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(text);
+}
+
+function isJPop(item) {
+    const title = item.title || "";
+    const singer = item.singer || "";
+    
+    // 1. If title or singer contains Japanese characters
+    if (containsJapanese(title) || containsJapanese(singer)) return true;
+    
+    // 2. If singer matches our popular J-Pop list
+    const upperSinger = singer.toUpperCase();
+    if (JPOP_ARTISTS.some(artist => upperSinger.includes(artist.toUpperCase()))) return true;
+    
+    // 3. Heuristic: If it has ( ) with Japanese in it (common in TJ/KY titles)
+    if (/\([\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+\)/.test(title)) return true;
+
+    return false;
+}
+
 // --- UI Helpers ---
 function renderResults(results) {
     const grouped = {};
-    results.forEach(item => {
+    
+    // Filter for J-Pop ONLY
+    const filteredResults = results.filter(isJPop);
+
+    filteredResults.forEach(item => {
         const key = `${item.title.toLowerCase().replace(/\s/g, '')}-${item.singer.toLowerCase().replace(/\s/g, '')}`;
         if (!grouped[key]) {
             grouped[key] = { title: item.title, singer: item.singer, tj: null, ky: null };

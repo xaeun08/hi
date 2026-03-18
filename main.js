@@ -269,39 +269,63 @@ async function fetchData(query, brand) {
     } catch (e) { return []; }
 }
 
-// --- Top Charts (Real-time Simulation/Placeholder) ---
-// 실제 실시간 데이터를 가져오려면 특정 사이트의 스크래핑이나 공식 API가 필요합니다.
+// --- Top Charts (Real-time Scraping) ---
 async function loadTopCharts() {
-    chartsTab.innerHTML = '<div class="loading"><div class="spinner"></div><span>차트 불러오는 중...</span></div>';
+    chartsTab.innerHTML = '<div class="loading"><div class="spinner"></div><span>TJ 실시간 차트 불러오는 중...</span></div>';
     
-    // 시뮬레이션: 실제로는 서버리스 함수 등을 통해 멜론/TJ 차트를 긁어올 수 있습니다.
-    // 여기서는 우선 기존 리스트를 더 세련되게 보여줍니다.
-    setTimeout(() => {
-        chartsTab.innerHTML = '<p class="tab-desc">오늘의 인기 J-Pop 차트입니다.</p>';
+    try {
+        // CORS Proxy를 사용하여 TJ 미디어 차트 페이지 가져오기
+        const targetUrl = "https://www.tjmedia.com/chart/top100";
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+        
+        const response = await fetch(proxyUrl);
+        const data = await response.json();
+        const html = data.contents;
+
+        // 임시 DOM 객체를 생성하여 HTML 파싱
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const rows = doc.querySelectorAll(".board_type1 tbody tr");
+
+        if (rows.length === 0) throw new Error("데이터를 찾을 수 없습니다.");
+
+        chartsTab.innerHTML = '<p class="tab-desc">TJ 미디어 실시간 인기 TOP 100 차트입니다.</p>';
         const grid = document.createElement("div");
         grid.className = "charts-grid";
-        
-        const JPOP_CHARTS = [
-            { rank: 1, title: "Bling-Bang-Bang-Born", singer: "Creepy Nuts" },
-            { rank: 2, title: "Idol", singer: "YOASOBI" },
-            { rank: 3, title: "Specialz", singer: "King Gnu" },
-            { rank: 4, title: "Biri-Biri", singer: "YOASOBI" },
-            { rank: 5, title: "晩餐歌", singer: "tuki." }
-        ];
 
-        JPOP_CHARTS.forEach(item => {
+        // 상위 50개만 표시 (성능 및 가독성)
+        Array.from(rows).slice(0, 50).forEach(row => {
+            const cells = row.querySelectorAll("td");
+            if (cells.length < 5) return;
+
+            const rank = cells[0].textContent.trim();
+            const number = cells[1].textContent.trim();
+            const title = cells[3].textContent.trim();
+            const singer = cells[4].textContent.trim();
+
             const div = document.createElement("div");
-            div.className = "chart-item";
-            div.innerHTML = `<span class="chart-rank">${item.rank}</span> <div><strong>${item.title}</strong><br><small>${item.singer}</small></div>`;
+            div.className = "chart-item animate-in";
+            div.innerHTML = `
+                <span class="chart-rank">${rank}</span>
+                <div class="chart-info">
+                    <strong>${title}</strong><br>
+                    <small>${singer}</small>
+                </div>
+                <div class="chart-no">${number}</div>
+            `;
+            
             div.onclick = () => {
-                searchInput.value = item.title;
+                searchInput.value = number; // 번호로 직접 검색 시도
                 searchInput.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter' }));
                 document.querySelector('[data-tab="search"]').click();
             };
             grid.appendChild(div);
         });
         chartsTab.appendChild(grid);
-    }, 500);
+    } catch (e) {
+        console.error(e);
+        chartsTab.innerHTML = '<div class="placeholder-message"><p>차트를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p></div>';
+    }
 }
 
 // --- Spotify Auth (Omitted for brevity, keep existing) ---

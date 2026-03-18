@@ -269,65 +269,44 @@ async function fetchData(query, brand) {
     } catch (e) { return []; }
 }
 
-// --- Top Charts (Real-time Scraping) ---
+// --- Top Charts (Real-time Scraping via Local API) ---
 async function loadTopCharts() {
     chartsTab.innerHTML = '<div class="loading"><div class="spinner"></div><span>TJ 실시간 차트 불러오는 중...</span></div>';
     
-    // 여러 프록시 서버를 시도하여 안정성을 높입니다.
-    const proxies = [
-        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-        (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
-    ];
+    try {
+        // 자체 제작한 Backend Proxy API 호출 (CORS 우회)
+        const response = await fetch("/api/chart");
+        if (!response.ok) throw new Error("API 서버 응답 실패");
+        
+        const data = await response.json();
+        const html = data.contents;
 
-    let success = false;
-    for (const getProxyUrl of proxies) {
-        try {
-            const targetUrl = "https://www.tjmedia.com/chart/top100";
-            const proxyUrl = getProxyUrl(targetUrl);
-            
-            const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error("네트워크 응답 에러");
-            
-            let html;
-            if (proxyUrl.includes("allorigins")) {
-                const data = await response.json();
-                html = data.contents;
-            } else {
-                html = await response.text();
-            }
+        if (!html || html.length < 100) throw new Error("데이터 수집 실패");
 
-            if (!html || html.length < 100) throw new Error("데이터가 비어있음");
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const rows = doc.querySelectorAll(".board_type1 tbody tr");
 
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, "text/html");
-            // TJ 미디어의 테이블 클래스명이 board_type1 인지 다시 확인 후 파싱
-            const rows = doc.querySelectorAll(".board_type1 tbody tr");
-
-            if (rows.length === 0) {
-                // 클래스명이 변경되었을 경우를 대비한 대체 선택자
-                const altRows = doc.querySelectorAll("table tbody tr");
-                if (altRows.length < 10) throw new Error("테이블 구조 파싱 실패");
-                renderChartRows(altRows);
-            } else {
-                renderChartRows(rows);
-            }
-
-            success = true;
-            break; // 성공하면 루프 탈출
-        } catch (e) {
-            console.warn(`프록시 시도 실패:`, e);
-            continue; // 다음 프록시 시도
+        if (rows.length === 0) {
+            const altRows = doc.querySelectorAll("table tbody tr");
+            if (altRows.length < 10) throw new Error("데이터 구조 파싱 불가");
+            renderChartRows(altRows);
+        } else {
+            renderChartRows(rows);
         }
-    }
 
-    if (!success) {
+    } catch (e) {
+        console.error("차트 로딩 오류:", e);
         chartsTab.innerHTML = `
             <div class="placeholder-message">
-                <p>차트 서버에 연결할 수 없습니다.</p>
-                <button onclick="loadTopCharts()" class="primary-btn" style="width: auto; padding: 8px 20px; margin-top: 10px;">다시 시도</button>
+                <p>차트를 불러올 수 없습니다. (CORS/403 문제 해결을 위해 배포 대기 중일 수 있습니다.)</p>
+                <button onclick="window.loadTopCharts()" class="primary-btn" style="width: auto; padding: 8px 20px; margin-top: 10px;">다시 시도</button>
             </div>`;
     }
 }
+
+// 전역에서 접근 가능하도록 window에 할당 ( onclick에서 인식하기 위함 )
+window.loadTopCharts = loadTopCharts;
 
 function renderChartRows(rows) {
     chartsTab.innerHTML = '<p class="tab-desc">TJ 미디어 실시간 인기 TOP 100 차트입니다.</p>';

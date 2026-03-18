@@ -92,23 +92,94 @@ async function handleImage(file) {
 async function processImage(file) {
     await initOCR();
     ocrStatus.classList.remove("hidden");
-    ocrStatusText.textContent = "이미지에서 텍스트를 읽는 중...";
+    ocrStatusText.textContent = "이미지 최적화 중...";
     extractedTitlesContainer.classList.add("hidden");
 
     try {
-        const { data: { text } } = await tesseractWorker.recognize(file);
-        const lines = text.split("\n")
-            .map(line => line.trim())
-            .filter(line => line.length > 1 && !/^\d+$/.test(line) && !/^[^\w\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uAC00-\uD7AF]+$/.test(line));
+        // --- Image Preprocessing ---
+        const preprocessedBlob = await preprocessImageForOCR(file);
+        
+        ocrStatusText.textContent = "이미지에서 텍스트를 읽는 중...";
+        const { data: { text, lines } } = await tesseractWorker.recognize(preprocessedBlob);
+        
+        // --- Advanced Filtering ---
+        const processedTitles = lines
+            .map(line => {
+                // Remove special characters at start/end, keep letters, numbers, and CJK characters
+                let cleaned = line.text.trim()
+                    .replace(/^[^a-zA-Z0-9가-힣ぁ-んァ-ヶ亜-熙]+|[^a-zA-Z0-9가-힣ぁ-んァ-ヶ亜-熙]+$/g, "");
+                
+                // If the line looks like "Title - Artist", try to split or keep it clean
+                return cleaned;
+            })
+            .filter(text => {
+                // Filter out: too short, only numbers (likely karaoke numbers or dates), or empty
+                if (text.length < 2) return false;
+                if (/^\d+$/.test(text)) return false;
+                if (text.includes("http") || text.includes("www")) return false;
+                return true;
+            });
 
-        // Deduplicate
-        const uniqueTitles = [...new Set(lines)];
+        // Deduplicate and filter out very common UI text
+        const commonUIWords = ["곡명", "가수", "번호", "Search", "Top", "Charts"];
+        const uniqueTitles = [...new Set(processedTitles)]
+            .filter(title => !commonUIWords.some(word => title.toLowerCase().includes(word.toLowerCase())));
+
         renderExtractedTitles(uniqueTitles);
     } catch (e) {
+        console.error(e);
         showToast("이미지 처리 중 오류가 발생했습니다.");
     } finally {
         ocrStatus.classList.add("hidden");
     }
+}
+
+async function preprocessImageForOCR(file) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            
+            // Standardize size for better OCR
+            const maxDim = 1500;
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > height && width > maxDim) {
+                height *= maxDim / width;
+                width = maxDim;
+            } else if (height > maxDim) {
+                width *= maxDim / height;
+                height = maxDim;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Draw image
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Get image data for manual pixel manipulation (Grayscale + High Contrast)
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                // Grayscale: Y = 0.299R + 0.587G + 0.114B
+                const avg = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+                
+                // Increase Contrast: thresholding
+                const threshold = 128;
+                const value = avg > threshold ? 255 : 0;
+                
+                data[i] = data[i+1] = data[i+2] = value;
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            canvas.toBlob(blob => resolve(blob), "image/png");
+        };
+        img.src = URL.createObjectURL(file);
+    });
 }
 
 function renderExtractedTitles(titles) {

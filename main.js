@@ -273,59 +273,99 @@ async function fetchData(query, brand) {
 async function loadTopCharts() {
     chartsTab.innerHTML = '<div class="loading"><div class="spinner"></div><span>TJ 실시간 차트 불러오는 중...</span></div>';
     
-    try {
-        // CORS Proxy를 사용하여 TJ 미디어 차트 페이지 가져오기
-        const targetUrl = "https://www.tjmedia.com/chart/top100";
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-        
-        const response = await fetch(proxyUrl);
-        const data = await response.json();
-        const html = data.contents;
+    // 여러 프록시 서버를 시도하여 안정성을 높입니다.
+    const proxies = [
+        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
+    ];
 
-        // 임시 DOM 객체를 생성하여 HTML 파싱
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
-        const rows = doc.querySelectorAll(".board_type1 tbody tr");
-
-        if (rows.length === 0) throw new Error("데이터를 찾을 수 없습니다.");
-
-        chartsTab.innerHTML = '<p class="tab-desc">TJ 미디어 실시간 인기 TOP 100 차트입니다.</p>';
-        const grid = document.createElement("div");
-        grid.className = "charts-grid";
-
-        // 상위 50개만 표시 (성능 및 가독성)
-        Array.from(rows).slice(0, 50).forEach(row => {
-            const cells = row.querySelectorAll("td");
-            if (cells.length < 5) return;
-
-            const rank = cells[0].textContent.trim();
-            const number = cells[1].textContent.trim();
-            const title = cells[3].textContent.trim();
-            const singer = cells[4].textContent.trim();
-
-            const div = document.createElement("div");
-            div.className = "chart-item animate-in";
-            div.innerHTML = `
-                <span class="chart-rank">${rank}</span>
-                <div class="chart-info">
-                    <strong>${title}</strong><br>
-                    <small>${singer}</small>
-                </div>
-                <div class="chart-no">${number}</div>
-            `;
+    let success = false;
+    for (const getProxyUrl of proxies) {
+        try {
+            const targetUrl = "https://www.tjmedia.com/chart/top100";
+            const proxyUrl = getProxyUrl(targetUrl);
             
-            div.onclick = () => {
-                searchInput.value = number; // 번호로 직접 검색 시도
-                searchInput.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter' }));
-                document.querySelector('[data-tab="search"]').click();
-            };
-            grid.appendChild(div);
-        });
-        chartsTab.appendChild(grid);
-    } catch (e) {
-        console.error(e);
-        chartsTab.innerHTML = '<div class="placeholder-message"><p>차트를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p></div>';
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error("네트워크 응답 에러");
+            
+            let html;
+            if (proxyUrl.includes("allorigins")) {
+                const data = await response.json();
+                html = data.contents;
+            } else {
+                html = await response.text();
+            }
+
+            if (!html || html.length < 100) throw new Error("데이터가 비어있음");
+
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            // TJ 미디어의 테이블 클래스명이 board_type1 인지 다시 확인 후 파싱
+            const rows = doc.querySelectorAll(".board_type1 tbody tr");
+
+            if (rows.length === 0) {
+                // 클래스명이 변경되었을 경우를 대비한 대체 선택자
+                const altRows = doc.querySelectorAll("table tbody tr");
+                if (altRows.length < 10) throw new Error("테이블 구조 파싱 실패");
+                renderChartRows(altRows);
+            } else {
+                renderChartRows(rows);
+            }
+
+            success = true;
+            break; // 성공하면 루프 탈출
+        } catch (e) {
+            console.warn(`프록시 시도 실패:`, e);
+            continue; // 다음 프록시 시도
+        }
     }
+
+    if (!success) {
+        chartsTab.innerHTML = `
+            <div class="placeholder-message">
+                <p>차트 서버에 연결할 수 없습니다.</p>
+                <button onclick="loadTopCharts()" class="primary-btn" style="width: auto; padding: 8px 20px; margin-top: 10px;">다시 시도</button>
+            </div>`;
+    }
+}
+
+function renderChartRows(rows) {
+    chartsTab.innerHTML = '<p class="tab-desc">TJ 미디어 실시간 인기 TOP 100 차트입니다.</p>';
+    const grid = document.createElement("div");
+    grid.className = "charts-grid";
+
+    let count = 0;
+    Array.from(rows).forEach(row => {
+        const cells = row.querySelectorAll("td");
+        if (cells.length < 5 || count >= 50) return;
+
+        const rank = cells[0].textContent.trim();
+        const number = cells[1].textContent.trim();
+        const title = cells[3].textContent.trim();
+        const singer = cells[4].textContent.trim();
+
+        if (!title || !number) return;
+        count++;
+
+        const div = document.createElement("div");
+        div.className = "chart-item animate-in";
+        div.innerHTML = `
+            <span class="chart-rank">${rank}</span>
+            <div class="chart-info">
+                <strong>${title}</strong><br>
+                <small>${singer}</small>
+            </div>
+            <div class="chart-no">${number}</div>
+        `;
+        
+        div.onclick = () => {
+            searchInput.value = number;
+            searchInput.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter' }));
+            document.querySelector('[data-tab="search"]').click();
+        };
+        grid.appendChild(div);
+    });
+    chartsTab.appendChild(grid);
 }
 
 // --- Spotify Auth (Omitted for brevity, keep existing) ---

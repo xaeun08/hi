@@ -14,7 +14,19 @@ const syncPanel = document.querySelector(".sync-panel");
 // Spotify Config
 let SPOTIFY_CLIENT_ID = localStorage.getItem("spotify_client_id") || "";
 const REDIRECT_URI = window.location.origin + window.location.pathname;
-const SCOPES = "user-library-read user-read-recently-played";
+
+// OCR Elements
+const imageUpload = document.getElementById("imageUpload");
+const dropZone = document.getElementById("dropZone");
+const imagePreview = document.getElementById("imagePreview");
+const ocrStatus = document.getElementById("ocrStatus");
+const ocrStatusText = document.getElementById("ocrStatusText");
+const extractedTitlesContainer = document.getElementById("extractedTitlesContainer");
+const titlesList = document.getElementById("titlesList");
+const searchAllBtn = document.getElementById("searchAllBtn");
+
+let tesseractWorker = null;
+let isOCRInitializing = false;
 
 // --- Tab System ---
 tabBtns.forEach(btn => {
@@ -27,8 +39,129 @@ tabBtns.forEach(btn => {
 
         if (target === "charts") loadTopCharts();
         if (target === "sync") checkSpotifyAuth();
+        if (target === "capture") initOCR();
     });
 });
+
+// --- OCR Search System ---
+async function initOCR() {
+    if (tesseractWorker || isOCRInitializing) return;
+    isOCRInitializing = true;
+    
+    ocrStatus.classList.remove("hidden");
+    ocrStatusText.textContent = "OCR 엔진 준비 중...";
+    try {
+        tesseractWorker = await Tesseract.createWorker("kor+jpn+eng");
+    } catch (e) {
+        showToast("OCR 엔진 초기화에 실패했습니다.");
+    } finally {
+        ocrStatus.classList.add("hidden");
+        isOCRInitializing = false;
+    }
+}
+
+imageUpload.addEventListener("change", (e) => handleImage(e.target.files[0]));
+
+dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("active");
+});
+
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("active"));
+
+dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("active");
+    handleImage(e.dataTransfer.files[0]);
+});
+
+async function handleImage(file) {
+    if (!file || !file.type.startsWith("image/")) return;
+
+    // Preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        imagePreview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+        imagePreview.classList.remove("hidden");
+    };
+    reader.readAsDataURL(file);
+
+    await processImage(file);
+}
+
+async function processImage(file) {
+    await initOCR();
+    ocrStatus.classList.remove("hidden");
+    ocrStatusText.textContent = "이미지에서 텍스트를 읽는 중...";
+    extractedTitlesContainer.classList.add("hidden");
+
+    try {
+        const { data: { text } } = await tesseractWorker.recognize(file);
+        const lines = text.split("\n")
+            .map(line => line.trim())
+            .filter(line => line.length > 1 && !/^\d+$/.test(line) && !/^[^\w\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uAC00-\uD7AF]+$/.test(line));
+
+        // Deduplicate
+        const uniqueTitles = [...new Set(lines)];
+        renderExtractedTitles(uniqueTitles);
+    } catch (e) {
+        showToast("이미지 처리 중 오류가 발생했습니다.");
+    } finally {
+        ocrStatus.classList.add("hidden");
+    }
+}
+
+function renderExtractedTitles(titles) {
+    titlesList.innerHTML = "";
+    if (titles.length === 0) {
+        showToast("텍스트를 추출하지 못했습니다. 다른 이미지를 시도해보세요.");
+        return;
+    }
+
+    titles.forEach(title => {
+        const div = document.createElement("div");
+        div.className = "extracted-item selected"; // Default selected
+        div.textContent = title;
+        div.onclick = () => div.classList.toggle("selected");
+        titlesList.appendChild(div);
+    });
+
+    extractedTitlesContainer.classList.remove("hidden");
+}
+
+searchAllBtn.onclick = async () => {
+    const selected = Array.from(titlesList.querySelectorAll(".extracted-item.selected"))
+        .map(el => el.textContent);
+
+    if (selected.length === 0) return;
+
+    showLoading(true);
+    resultsContainer.innerHTML = "";
+    document.querySelector('[data-tab="search"]').click();
+
+    try {
+        const promises = selected.map(title => performBatchSearch(title));
+        const results = await Promise.all(promises);
+        const allResults = results.flat();
+        renderResults(allResults);
+    } catch (e) {
+        showError();
+    } finally {
+        showLoading(false);
+    }
+};
+
+async function performBatchSearch(query) {
+    try {
+        const [tjData, kyData] = await Promise.all([
+            fetchData(query, 'tj'),
+            fetchData(query, 'kumyoung')
+        ]);
+        return [...tjData, ...kyData];
+    } catch (e) {
+        return [];
+    }
+}
 
 // --- Search System ---
 searchInput.addEventListener("keypress", async (e) => {

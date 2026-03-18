@@ -17,6 +17,7 @@
             
             <nav class="tab-navigation">
                 <button class="tab-btn active" data-tab="search">Search</button>
+                <button class="tab-btn" data-tab="capture">Capture</button>
                 <button class="tab-btn" data-tab="charts">Top Charts</button>
                 <button class="tab-btn" data-tab="sync">My Music Sync</button>
             </nav>
@@ -26,6 +27,27 @@
                     <div class="search-bar">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                         <input type="text" id="searchInput" placeholder="노래 제목, 가수 (한글 발음 가능! 예: 레몬, 요아소비)">
+                    </div>
+                </div>
+            </div>
+
+            <div id="captureTab" class="tab-content">
+                <div class="capture-panel">
+                    <p class="tab-desc">플레이리스트나 노래 목록 캡쳐본을 올려주세요. (한국어, 일본어, 영어 지원)</p>
+                    <label for="imageUpload" class="upload-area" id="dropZone">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="upload-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        <span>이미지 업로드 또는 드래그 & 드롭</span>
+                        <input type="file" id="imageUpload" accept="image/*" class="hidden">
+                    </label>
+                    <div id="imagePreview" class="image-preview hidden"></div>
+                    <div id="ocrStatus" class="ocr-status hidden">
+                        <div class="spinner small"></div>
+                        <span id="ocrStatusText">텍스트 추출 중...</span>
+                    </div>
+                    <div id="extractedTitlesContainer" class="extracted-titles hidden">
+                        <h4>추출된 곡 제목 (클릭하여 검색)</h4>
+                        <div id="titlesList" class="titles-list"></div>
+                        <button id="searchAllBtn" class="primary-btn">모두 검색하기</button>
                     </div>
                 </div>
             </div>
@@ -74,6 +96,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="main.js" type="module"></script>
 </body>
 </html>

@@ -6,6 +6,7 @@ A web-based application designed to help users easily find TJ (Taijin) and KY (K
 ## Features
 -   **Search Functionality:** Search for songs by title or artist.
 -   **Karaoke Database Integration:** Real-time fetching of karaoke numbers from the `api.manana.kr` public API.
+-   **Capture Search:** Extract song titles from uploaded images (screenshots) using OCR (Tesseract.js) and automatically search for karaoke numbers.
 -   **Brand Filtering:** Display results for both TJ and KY systems, with clear visual distinction (e.g., Red for TJ, Blue for KY).
 -   **Copy to Clipboard:** One-click copying of karaoke numbers.
 -   **Responsive Design:** Fully functional on both desktop and mobile devices.
@@ -20,6 +21,7 @@ A web-based application designed to help users easily find TJ (Taijin) and KY (K
     -   **Responsive Grid:** Adapts to screen size.
 -   **JavaScript (Vanilla ES6+):**
     -   `fetch()` API to communicate with `api.manana.kr`.
+    -   `Tesseract.js` for client-side OCR processing.
     -   DOM manipulation to render search results dynamically.
     -   Event listeners for search input and "Enter" key.
 
